@@ -1,0 +1,24 @@
+fastapi
+uvicorn
+pydantic-settings
+python-dotenv
+requests
+opencensus-ext-azure
+wikipedia-api
+geopy
+# --- LangGraph and LangChain ---
+langgraph>=0.1.14
+langchain>=0.2.10
+langchain-core>=0.2.17
+langchain-openai>=0.1.10
+
+# --- Memory & State Handling ---
+pydantic>=2.7.0
+typing-extensions>=4.11.0
+
+# --- Azure OpenAI client (already in your project, but include for safety) ---
+openai>=1.30.0
+
+# --- Utilities ---
+tiktoken>=0.6.0
+python-dotenv>=1.0.1

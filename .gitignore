@@ -1,0 +1,52 @@
+# --- Python cache / compiled files ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyd
+*.so
+
+
+# --- Virtual environments ---
+venv/
+.venv/
+env/
+ENV/
+sportsagent-env/
+
+# --- Environment / secrets ---
+.env
+.env.*
+*.env
+
+# Local state for memory or cache
+memory_store.json
+
+# --- Logs ---
+logs/
+*.log
+
+# --- Test / coverage caches ---
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+
+# --- IDE / editor stuff ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- OS junk ---
+.DS_Store
+Thumbs.db
+
+# --- Optional: personal notes ---
+extra.txt
+setup.txt
+
+# --- Node / frontend (if any) ---
+node_modules/
+dist/
+build/
