@@ -45,6 +45,9 @@ Thumbs.db
 # --- Optional: personal notes ---
 extra.txt
 setup.txt
+llm_test.py
+test_apis.py
+test_llm.py
 
 # --- Node / frontend (if any) ---
 node_modules/
