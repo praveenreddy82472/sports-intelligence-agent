@@ -591,7 +591,7 @@
       const typingRow = showTyping();
 
       try {
-        const response = await fetch("http://127.0.0.1:8000/chat", {
+        const response = await fetch("https://sports-agent-app.delightfulsea-201917c6.eastus.azurecontainerapps.io/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ message, session_id: sessionId }),
