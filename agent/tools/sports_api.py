@@ -1,219 +1,206 @@
 import requests
 import logging
+import re
+from datetime import datetime
 from core.config import settings
-from core.logging_config import setup_logging
 
-# Initialize logger
-setup_logging()
+# --------------------------------------------------------
+# Logging
+# --------------------------------------------------------
 logger = logging.getLogger(__name__)
 
-BASE_URL = "https://cricket.sportmonks.com/api/v2.0"
-API_KEY = settings.sports_api_key
+# --------------------------------------------------------
+# RapidAPI Config
+# --------------------------------------------------------
+RAPIDAPI_HOST = "unofficial-cricbuzz.p.rapidapi.com"
 
+print("Rapid API Key Loaded:", settings.rapid_api_key)
 
-# ============================================================
-# TEAM NORMALIZATION (Fix typos, variations, abbreviations)
-# ============================================================
-TEAM_ALIASES = {
-    "india": ["india", "ind"],
-    "australia": ["australia", "aus", "austraila", "austalia"],
-    "england": ["england", "eng"],
-    "sri lanka": ["sri lanka", "srilanka", "sl", "sri-lanka"],
-    "south africa": ["south africa", "sa", "southafrica"],
-    "new zealand": ["new zealand", "nz"],
-    "pakistan": ["pakistan", "pak"],
-    "bangladesh": ["bangladesh", "ban"],
-    "west indies": ["west indies", "wi", "windies"],
-    "afghanistan": ["afghanistan", "afg"],
-    "ireland": ["ireland", "ire"],
+HEADERS = {
+    "x-rapidapi-key": settings.rapid_api_key,
+    "x-rapidapi-host": RAPIDAPI_HOST
 }
 
-def normalize_team_name(text: str):
-    text = text.lower().strip()
+CURRENT_MATCHES_URL = "https://unofficial-cricbuzz.p.rapidapi.com/matches/get-schedules"
+SERIES_MATCHES_URL = "https://unofficial-cricbuzz.p.rapidapi.com/series/get-matches"
 
-    # remove unwanted words
-    for word in ["next", "match", "game", "team"]:
-        text = text.replace(word, "").strip()
 
-    for official, aliases in TEAM_ALIASES.items():
-        for alias in aliases:
-            if alias in text:
-                return official
+# --------------------------------------------------------
+# TEAM NORMALIZATION
+# --------------------------------------------------------
+TEAM_MAP = {
+    "aus": "australia", "australia": "australia",
+    "ind": "india", "india": "india",
+    "pak": "pakistan", "pakistan": "pakistan",
+    "eng": "england", "england": "england",
+    "sa": "south africa", "south africa": "south africa",
+    "nz": "new zealand", "new zealand": "new zealand",
+    "sl": "sri lanka", "sri lanka": "sri lanka",
+    "wi": "west indies", "west indies": "west indies"
+}
+
+def normalize_team(text: str):
+    text = text.lower()
+    text = re.sub(r"[^a-z\s]", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+
+    # token match
+    for w in text.split():
+        if w in TEAM_MAP:
+            return TEAM_MAP[w]
+
+    # substring fallback
+    for _, v in TEAM_MAP.items():
+        if v in text:
+            return v
 
     return None
 
 
 # ============================================================
-# Extract match format (ODI / T20 / Test)
+# 1️⃣ CURRENT MATCHES (LIVE / ONGOING)
 # ============================================================
-def extract_format(match):
-    league = match.get("league", {})
-    stage = match.get("stage", {})
+def get_current_match(team_input: str):
+    logger.info(f"[CRICBUZZ] Checking CURRENT match for: {team_input}")
 
-    format_type = (
-        league.get("type")
-        or stage.get("type")
-        or league.get("season_type")
-        or "Unknown"
-    )
+    team = normalize_team(team_input)
+    if not team:
+        return {"error": f"Team not recognized: {team_input}"}
 
-    return format_type
-
-
-# ============================================================
-# Convert raw fixture into clean standardized match object
-# ============================================================
-def build_match_info(match):
-    venue = match.get("venue", {}) or {}
-    country = (
-        venue.get("country", {}).get("name")
-        if isinstance(venue.get("country"), dict)
-        else None
-    )
-
-    return {
-        "home_team": match.get("localteam", {}).get("name"),
-        "away_team": match.get("visitorteam", {}).get("name"),
-        "date": match.get("starting_at"),
-        "status": match.get("status"),
-        "venue": venue.get("name"),
-        "city": venue.get("city"),
-        "country": country,
-        "format": extract_format(match)
-    }
-
-
-# ============================================================
-# 1️⃣ FETCH NEXT MATCH (LIVE + UPCOMING)
-# ============================================================
-def get_next_match(team_input: str) -> dict:
-    logger.info(f"[SPORTS API] Fetching next match for: {team_input}")
-
-    normalized = normalize_team_name(team_input)
-    if not normalized:
-        return {"error": f"Unrecognized team name: {team_input}"}
+    params = {"matchType": "international"}
 
     try:
-        # Fetch all fixtures (any status)
-        params = {
-            "api_token": API_KEY,
-            "include": "venue.country,localteam,visitorteam,league,stage",
-            "page[limit]": 150,
-            "sort": "starting_at",
-            "filter[status]": "NS"
-        }
+        res = requests.get(CURRENT_MATCHES_URL, headers=HEADERS, params=params, timeout=10)
+        data = res.json()
 
-        url = f"{BASE_URL}/fixtures"
-        response = requests.get(url, params=params, timeout=12)
+        LIVE_KEYS = ["live", "day", "session", "innings", "stumps"]
 
-        if response.status_code != 200:
-            logger.error(f"API ERROR: {response.text[:200]}")
-            return {"error": f"SportMonks API error {response.status_code}"}
+        for day in data.get("scheduleAdWrapper", []):
+            block = day.get("matchScheduleMap", {})
+            matches = block.get("matchScheduleList", [])
 
-        fixtures = response.json().get("data", [])
-        if not fixtures:
-            return {"error": "No fixture data returned."}
+            for bucket in matches:
+                for match in bucket.get("matchInfo", []):
+
+                    t1 = match["team1"]["teamName"].lower()
+                    t2 = match["team2"]["teamName"].lower()
+                    if team not in t1 and team not in t2:
+                        continue
+
+                    desc = match.get("matchDesc", "").lower()
+                    if any(k in desc for k in LIVE_KEYS):
+                        ts = int(match["startDate"]) / 1000
+                        venue = match.get("venueInfo", {})
+
+                        return {
+                            "team1": match["team1"]["teamName"],
+                            "team2": match["team2"]["teamName"],
+                            "status": match.get("matchDesc"),
+                            "format": match.get("matchFormat"),
+                            "date": datetime.fromtimestamp(ts).isoformat(),
+                            "venue": venue.get("ground"),
+                            "city": venue.get("city"),
+                            "country": venue.get("country")
+                        }
+
+        return {"message": f"No current match right now for {team}."}
+
+    except Exception as e:
+        logger.exception(e)
+        return {"error": str(e)}
+
+
+# ============================================================
+# 2️⃣ DETECT SERIES FOR TEAM (using CURRENT MATCHES API)
+# ============================================================
+def detect_series_for_team(team: str):
+    """Find the series name + seriesId for a team from schedule API"""
+
+    params = {"matchType": "international"}
+
+    try:
+        res = requests.get(CURRENT_MATCHES_URL, headers=HEADERS, params=params, timeout=10)
+        data = res.json()
+
+        for day in data.get("scheduleAdWrapper", []):
+            block = day.get("matchScheduleMap", {})
+            matches = block.get("matchScheduleList", [])
+
+            for bucket in matches:
+                series_name = bucket.get("seriesName")
+                series_id = bucket.get("seriesId")
+
+                for match in bucket.get("matchInfo", []):
+                    t1 = match["team1"]["teamName"].lower()
+                    t2 = match["team2"]["teamName"].lower()
+
+                    if team in t1 or team in t2:
+                        return series_name, series_id
+
+        return None, None
+
+    except Exception as e:
+        logger.exception(e)
+        return None, None
+
+
+# ============================================================
+# 3️⃣ SERIES SCHEDULE BASED ON TEAM NAME
+# ============================================================
+def get_series_schedule_by_team(team_input: str):
+    team = normalize_team(team_input)
+    if not team:
+        return {"error": f"Team not recognized: {team_input}"}
+
+    logger.info(f"[CRICBUZZ] Getting SERIES for team: {team}")
+
+    # STEP 1: Find series linked to the team
+    series_name, series_id = detect_series_for_team(team)
+
+    if not series_id:
+        return {"error": f"No active or upcoming series found for {team}"}
+
+    # STEP 2: Fetch full series schedule
+    try:
+        params = {"seriesId": series_id}
+        res = requests.get(SERIES_MATCHES_URL, headers=HEADERS, params=params, timeout=15)
+        data = res.json()
 
         matches = []
 
-        # Find matches involving this team
-        for match in fixtures:
-            local = match.get("localteam", {}).get("name", "").lower()
-            visitor = match.get("visitorteam", {}).get("name", "").lower()
+        for block in data.get("adWrapper", []):
+            matchDetails = block.get("matchDetails", {})
+            for match in matchDetails.get("matches", []):
+                match_info = match.get("matchInfo")
+                if not match_info:
+                    continue
 
-            if normalized not in local and normalized not in visitor:
-                continue
+                ts = int(match_info["startDate"]) / 1000
+                dt = datetime.fromtimestamp(ts)
 
-            matches.append(match)
+                venue = match_info.get("venueInfo", {})
 
-        if not matches:
-            return {"error": f"No matches found for {normalized}"}
+                matches.append({
+                    "team1": match_info["team1"]["teamName"],
+                    "team2": match_info["team2"]["teamName"],
+                    "match_desc": match_info.get("matchDesc"),
+                    "format": match_info.get("matchFormat"),
+                    "date": dt.isoformat(),
+                    "venue": venue.get("ground"),
+                    "city": venue.get("city"),
+                    "country": venue.get("country"),
+                    "status": match_info.get("status")
+                })
 
-        # Sort by upcoming date
-        matches.sort(key=lambda m: m.get("starting_at") or "")
-
-        return build_match_info(matches[0])
-
-    except Exception as e:
-        logger.exception(f"[SPORTS API] Exception: {e}")
-        return {"error": str(e)}
-
-
-# ============================================================
-# 2️⃣ FETCH LIVE MATCH (LIVE / INPLAY / STUMPS)
-# ============================================================
-def get_live_match(team_input: str) -> dict:
-    logger.info(f"[SPORTS API] Fetching live match for: {team_input}")
-
-    normalized = normalize_team_name(team_input)
-    if not normalized:
-        return {"error": f"Unrecognized team name: {team_input}"}
-
-    LIVE_STATUSES = ["LIVE", "INPLAY", "1st Innings", "2nd Innings", "STUMPS"]
-
-    try:
-        params = {
-            "api_token": API_KEY,
-            "include": "venue.country,localteam,visitorteam,league,stage",
-            "page[limit]": 100,
+        return {
+            "team": team,
+            "series": series_name,
+            "seriesId": series_id,
+            "matches": matches
         }
 
-        res = requests.get(f"{BASE_URL}/fixtures", params=params, timeout=12)
-        fixtures = res.json().get("data", [])
-
-        for match in fixtures:
-            status = match.get("status", "").upper()
-
-            if status not in [s.upper() for s in LIVE_STATUSES]:
-                continue
-
-            local = match.get("localteam", {}).get("name", "").lower()
-            visitor = match.get("visitorteam", {}).get("name", "").lower()
-
-            if normalized in local or normalized in visitor:
-                return build_match_info(match)
-
-        return {"error": f"No live match found for {normalized}"}
-
     except Exception as e:
-        logger.exception(f"[SPORTS API] Error: {e}")
+        logger.exception(e)
         return {"error": str(e)}
-
-
-# ============================================================
-# 3️⃣ TEAM SCHEDULE (UPCOMING OR PAST)
-# ============================================================
-def get_team_schedule(team_input: str, limit: int = 3, direction: str = "future") -> list:
-    logger.info(f"[SPORTS API] Fetching team schedule for: {team_input}")
-
-    normalized = normalize_team_name(team_input)
-    if not normalized:
-        return []
-
-    try:
-        params = {
-            "api_token": API_KEY,
-            "include": "venue.country,localteam,visitorteam,league,stage",
-            "page[limit]": 200,
-            "sort": "starting_at" if direction == "future" else "-starting_at"
-        }
-
-        response = requests.get(f"{BASE_URL}/fixtures", params=params, timeout=12)
-        fixtures = response.json().get("data", [])
-
-        results = []
-
-        for f in fixtures:
-            local = f.get("localteam", {}).get("name", "").lower()
-            visitor = f.get("visitorteam", {}).get("name", "").lower()
-
-            if normalized not in local and normalized not in visitor:
-                continue
-
-            results.append(build_match_info(f))
-
-        return results[:limit]
-
-    except Exception as e:
-        logger.exception(f"[SPORTS API] Error fetching schedule: {e}")
-        return []
+    
+    

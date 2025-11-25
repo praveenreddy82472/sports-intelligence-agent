@@ -53,17 +53,13 @@ def classify_intent_llm(query: str) -> str:
         # ---------------------------------------------
         q = query.lower()
 
-        # LIVE MATCH INTENT
-        if any(w in q for w in ["live", "currently", "right now", "playing now"]):
-            return "live_match"
+        # LIVE or current match
+        if any(w in q for w in ["live", "current", "right now", "playing now", "today match"]):
+            return "current_match"
 
-        # NEXT MATCH INTENT
-        if any(w in q for w in ["next", "upcoming", "future match"]):
-            return "next_match"
-
-        # SCHEDULE INTENT
-        if any(w in q for w in ["schedule", "fixtures", "match list", "matches list"]):
-            return "schedule_match"
+        # NEXT SERIES (not next match)
+        if any(w in q for w in ["next", "upcoming", "future", "fixtures", "schedule"]):
+            return "next_series"
 
         # ---------------------------------------------
         # ADD NEW VALID INTENTS BELOW
@@ -87,14 +83,13 @@ def classify_intent_llm(query: str) -> str:
         # -----------------------------------------
         # 🧠 Fallback keyword detection
         # -----------------------------------------
-        if any(word in q for word in ["live"]):
-            return "live_match"
+        # LIVE or current match
+        if any(w in q for w in ["live", "current", "right now", "playing now", "today match"]):
+            return "current_match"
 
-        if any(word in q for word in ["next", "upcoming", "future"]):
-            return "next_match"
-
-        if any(word in q for word in ["schedule", "fixtures", "list"]):
-            return "schedule_match"
+        # NEXT SERIES (not next match)
+        if any(w in q for w in ["next", "upcoming", "future", "fixtures", "schedule"]):
+            return "next_series"
 
         if any(word in q for word in ["match", "team", "play", "score"]):
             return "match_info"
@@ -108,8 +103,9 @@ def classify_intent_llm(query: str) -> str:
         if any(word in q for word in ["city", "place", "things to do", "restaurant"]):
             return "city_info"
 
-        if any(word in q for word in ["summary", "report", "combine", "overview"]):
-            return "fusion_summary"
+        if any(w in q for w in ["match summary", "summary of", "summarize match", "full summary"]):
+            return "match_summary"
+
 
         if any(word in q for word in ["hi", "hello", "hey", "how are you", "yo"]):
             return "chitchat"

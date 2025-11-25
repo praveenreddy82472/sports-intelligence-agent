@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     # === API Keys ===
     openai_api_key: str | None = None
     azure_openai_endpoint :str | None = None
-    sports_api_key: str | None = None
+    rapid_api_key: str | None = None
     weather_api_key: str | None = None
     azure_maps_key: str | None = None
 

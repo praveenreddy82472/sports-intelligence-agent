@@ -77,12 +77,12 @@ def process_user_query(session_id: str, user_input: str) -> dict:
 
         # ─── 4️⃣ Combined summary ─────────────────────────
         elif intent == "fusion_summary":
-            return fusion_llm.run_fusion_llm(session_id, user_input)
+            return complete_llm.run_fusion_llm(session_id, user_input)
 
         # ─── 5️⃣ Fallback ─────────────────────────────────
         else:
             logger.warning(f"[ROUTER] Unknown intent for query: {user_input}")
-            return fusion_llm.run_fusion_llm(session_id, user_input)
+            return complete_llm.run_fusion_llm(session_id, user_input)
 
     except Exception as e:
         logger.exception(f"[ROUTER] Error handling query: {e}")

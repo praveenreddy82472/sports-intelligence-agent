@@ -2,104 +2,176 @@ import requests
 import logging
 from geopy.distance import geodesic
 from core.config import settings
-from core.logging_config import setup_logging
 from utils.formatters import clean_api_response
-#from utils.cache_utils import ttl_cache
 
-setup_logging()
-logger = logging.getLogger(__name__)
-#@ttl_cache()
-def get_travel_info(city: str, venue: str) -> dict:
-    """
-    Fetch nearby transport info (airport, bus, train, ferry) around a sports venue using Azure Maps.
-    Calculates distance from the venue and returns up to 5 options per category.
-    """
+logger = logging.getLogger("TRAVEL_API")
+
+
+def _geocode(query: str):
+    """Geocode any text globally using Azure Maps."""
+    url = "https://atlas.microsoft.com/search/address/json"
+    params = {
+        "api-version": "1.0",
+        "subscription-key": settings.azure_maps_key,
+        "query": query
+    }
+
+    resp = requests.get(url, params=params, timeout=10)
+
+    if resp.status_code != 200:
+        return None
+
+    results = resp.json().get("results", [])
+    if not results:
+        return None
+
+    pos = results[0].get("position")
+    if not pos:
+        return None
+
+    lat, lon = pos.get("lat"), pos.get("lon")
+    return lat, lon, results[0]
+
+
+def _reverse_geocode(lat, lon):
+    """Reverse lookup country & city for validation."""
+    url = "https://atlas.microsoft.com/search/address/reverse/json"
+    params = {
+        "api-version": "1.0",
+        "subscription-key": settings.azure_maps_key,
+        "query": f"{lat},{lon}"
+    }
+
+    resp = requests.get(url, params=params, timeout=10)
+    if resp.status_code != 200:
+        return None
+
+    results = resp.json().get("addresses", [])
+    if not results:
+        return None
+
+    addr = results[0].get("address", {})
+    return {
+        "country": addr.get("country"),
+        "state": addr.get("countrySubdivision"),
+        "city": addr.get("municipality"),
+    }
+
+
+def _is_far(lat, lon, city_lat=None, city_lon=None):
+    """Check if venue coords are too far from city coords (over 200 km)."""
+    if not city_lat or not city_lon:
+        return False
     try:
-        logger.info(f"[TRAVEL API] Fetch started for {venue}, {city}")
+        dist = geodesic((lat, lon), (city_lat, city_lon)).km
+        return dist > 200
+    except:
+        return False
 
-        base_url = "https://atlas.microsoft.com"
-        transport_spots = []
 
-        # Step 1: Get coordinates for the venue
-        venue_resp = requests.get(
-            f"{base_url}/search/address/json",
-            params={
-                "api-version": "1.0",
-                "subscription-key": settings.azure_maps_key,
-                "query": f"{venue}, {city}"
-            },
-            timeout=10
-        )
+def get_travel_info(city: str, venue: str = None) -> dict:
+    """GLOBAL SAFE travel lookup with fallback chain."""
+    try:
+        # ---------------------------------------------------------
+        # 1. Try different search queries: venue, venue+city, city
+        # ---------------------------------------------------------
+        logger.info(f"[TRAVEL] Searching coordinates for: {venue or city}")
 
-        if venue_resp.status_code != 200:
-            logger.error(f"[TRAVEL API] Failed to get venue coordinates ({venue_resp.status_code})")
-            return {"error": "Failed to retrieve venue coordinates"}
+        queries = []
+        if venue:
+            queries.append(venue)
+            queries.append(f"{venue}, {city}")
 
-        venue_results = venue_resp.json().get("results", [])
-        if not venue_results:
-            logger.warning(f"[TRAVEL API] No coordinates found for {venue}")
-            return {"error": "No venue found"}
+        queries.append(city)
 
-        venue_pos = venue_results[0].get("position", {})
-        venue_lat, venue_lon = venue_pos.get("lat"), venue_pos.get("lon")
+        venue_lat = venue_lon = None
+        city_lat = city_lon = None
 
-        if not venue_lat or not venue_lon:
-            logger.error(f"[TRAVEL API] Invalid coordinates for {venue}")
-            return {"error": "Invalid venue coordinates"}
+        for q in queries:
+            geo = _geocode(q)
+            if not geo:
+                continue
 
-        # Step 2: Fetch nearby transport hubs (within 10 km)
+            lat, lon, meta = geo
+
+            # Assign city coords when matching city-only lookup
+            if q.lower() == city.lower():
+                city_lat, city_lon = lat, lon
+
+            # Reverse-geocode validation
+            rev = _reverse_geocode(lat, lon)
+            if rev:
+                detected_city = (rev.get("city") or "").lower()
+                if city.lower() not in detected_city and venue:
+                    # Venue but city mismatch → consider suspicious
+                    logger.warning(f"[TRAVEL] '{q}' resolves far from expected city → skipping")
+                    continue
+
+            # If too far from city center (>200 km), reject unless it is city lookup
+            if venue and _is_far(lat, lon, city_lat, city_lon):
+                logger.warning(f"[TRAVEL] '{q}' is too far from city → skipping")
+                continue
+
+            venue_lat, venue_lon = lat, lon
+            logger.info(f"[TRAVEL] VALID coordinates for '{q}' → {lat}, {lon}")
+            break
+
+        if not venue_lat:
+            return {"error": f"Could not find valid coordinates for '{venue or city}'"}
+
+        # ---------------------------------------------------------
+        # 2. Search transport hubs near the validated coordinates
+        # ---------------------------------------------------------
         categories = ["airport", "bus station", "train station", "ferry terminal"]
+        results = []
         seen = set()
 
-        for category in categories:
+        base_url = "https://atlas.microsoft.com/search/poi/category/json"
+
+        for cat in categories:
+            logger.info(f"[TRAVEL] Fetching nearby {cat}")
+
             params = {
                 "api-version": "1.0",
                 "subscription-key": settings.azure_maps_key,
-                "query": category,
+                "query": cat,
                 "lat": venue_lat,
                 "lon": venue_lon,
+                "radius": 15000,
                 "limit": 5,
-                "radius": 10000,  # 10 km
             }
 
-            resp = requests.get(f"{base_url}/search/poi/category/json", params=params, timeout=10)
+            resp = requests.get(base_url, params=params, timeout=10)
             if resp.status_code != 200:
-                logger.warning(f"[TRAVEL API] {category} search failed ({resp.status_code})")
                 continue
 
-            for r in resp.json().get("results", []):
-                name = r.get("poi", {}).get("name")
+            for item in resp.json().get("results", []):
+                name = item.get("poi", {}).get("name")
                 if not name or name in seen:
                     continue
                 seen.add(name)
 
-                address = r.get("address", {}).get("freeformAddress", "")
-                pos = r.get("position", {})
-                lat, lon = pos.get("lat"), pos.get("lon")
+                address = item.get("address", {}).get("freeformAddress")
+                lat2 = item.get("position", {}).get("lat")
+                lon2 = item.get("position", {}).get("lon")
 
-                distance = None
-                if lat and lon:
-                    distance = round(geodesic((venue_lat, venue_lon), (lat, lon)).km, 1)
+                # Compute accurate distance
+                dist = round(geodesic((venue_lat, venue_lon), (lat2, lon2)).km, 1) if (lat2 and lon2) else None
 
-                transport_spots.append({
-                    "type": category.title(),
+                results.append({
+                    "type": cat.title(),
                     "name": name,
                     "address": address,
-                    "lat": lat,
-                    "lon": lon,
-                    "distance_km": distance
+                    "distance_km": dist,
                 })
 
-        maps_link = f"https://www.bing.com/maps?q={venue}+{city}"
-
-        logger.info(f"[TRAVEL API] Found {len(transport_spots)} transport options near {venue}")
         return clean_api_response({
             "city": city,
             "venue": venue,
-            "transport_options": transport_spots or "No transport hubs found nearby.",
-            "maps_link": maps_link
+            "transport_options": results or "No nearby transport hubs found.",
+            "maps_link": f"https://www.bing.com/maps?q={(venue or city).replace(' ', '+')}"
         }, ["city", "venue", "transport_options", "maps_link"])
 
     except Exception as e:
-        logger.exception(f"[TRAVEL API] Error fetching travel info for {city}: {e}")
+        logger.exception(f"[TRAVEL] ERROR: {e}")
         return {"error": str(e)}

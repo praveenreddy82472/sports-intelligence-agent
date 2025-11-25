@@ -7,9 +7,9 @@ from core.logging_config import setup_logging
 
 # Updated sports API (your new module)
 from agent.tools.sports_api import (
-    get_next_match,
-    get_live_match,
-    normalize_team_name
+    get_current_match,
+    get_series_schedule_by_team,
+    normalize_team
 )
 
 from agent.state.session_memory import memory
@@ -34,7 +34,7 @@ SPORTS_PROMPT = PROMPT_PATH.read_text(encoding="utf-8")
 # -------------------------------------------------------
 def extract_team_name(query: str) -> str:
     """Returns official normalized team name or None."""
-    team = normalize_team_name(query)
+    team = normalize_team(query)
     return team
 
 
@@ -60,7 +60,7 @@ def run_sports_llm(session_id: str, user_team_query: str):
         # -------------------------
         # STEP 1: Fetch next match
         # -------------------------
-        match_data = get_next_match(clean_team)
+        match_data = get_current_match(clean_team)
 
         if match_data.get("error"):
             logger.warning(f"[SPORTS LLM] No match data found -> {match_data['error']}")
@@ -126,59 +126,8 @@ def run_sports_llm(session_id: str, user_team_query: str):
 
 
 # -------------------------------------------------------
-# 3️⃣ Optional: LIVE MATCH ORCHESTRATOR
-# -------------------------------------------------------
-def run_live_match_llm(session_id: str, user_team_query: str):
-    """
-    Exactly same logic as next match, but uses LIVE match lookup.
-    """
-    try:
-        clean_team = extract_team_name(user_team_query)
-
-        if not clean_team:
-            return {"error": "Team not recognized. Try India, Australia, England, Pakistan, etc."}
-
-        logger.info(f"[SPORTS LLM] Processing LIVE match for: {clean_team}")
-
-        live_data = get_live_match(clean_team)
-
-        if live_data.get("error"):
-            return {"error": live_data["error"]}
-
-        live_json_str = json.dumps(live_data, indent=2)
-
-        prompt = (
-            "Provide a clean, short live match summary using ONLY this JSON:\n\n"
-            f"{live_json_str}\n\n"
-            "Do not add facts not present in JSON."
-        )
-
-        response = client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=[
-                {"role": "system", "content": "You summarize live cricket matches factually."},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.6,
-            top_p=0.3,
-            max_tokens=200,
-        )
-
-        summary = response.choices[0].message.content.strip()
-
-        memory.set_context(session_id, "live_summary", summary)
-
-        return {"summary": summary, "raw": live_data}
-
-    except Exception as e:
-        logger.error(f"[SPORTS LLM] Live Match Error: {e}")
-        return {"error": str(e)}
-
-
-# -------------------------------------------------------
 # 4️⃣ TEAM SCHEDULE (Upcoming fixtures)
 # -------------------------------------------------------
-from agent.tools.sports_api import get_team_schedule
 
 def run_schedule_llm(session_id: str, user_team_query: str):
     """
@@ -191,7 +140,7 @@ def run_schedule_llm(session_id: str, user_team_query: str):
 
         logger.info(f"[SPORTS LLM] Processing schedule for: {clean_team}")
 
-        schedule = get_team_schedule(clean_team)
+        schedule = get_series_schedule_by_team(clean_team)
 
         if not schedule:
             return {"error": f"No schedule found for {clean_team}."}

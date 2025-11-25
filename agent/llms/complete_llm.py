@@ -14,7 +14,7 @@ from agent.llms.sports_llm import run_sports_llm
 from agent.llms.weather_llm import run_weather_llm
 from agent.llms.city_llm import run_city_llm
 from agent.llms.travel_llm import run_travel_llm
-from agent.tools.sports_api import get_next_match
+from agent.tools.sports_api import get_current_match,get_series_schedule_by_team
 #from utils.cache_utils import ttl_cache
 
 setup_logging()
@@ -67,7 +67,7 @@ async def run_fusion_llm_async(session_id: str, user_query: str) -> Dict[str, An
                 return {"error": "No team detected. Try asking about a specific team, e.g., 'next match for Bangladesh'."}
 
         # --- Fetch match info fresh from API ---
-        match_info = get_next_match(team)
+        match_info = get_current_match(team)
         if not match_info or "city" not in match_info:
             raise ValueError(f"No match info found for {team}")
 

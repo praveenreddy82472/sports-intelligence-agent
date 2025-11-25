@@ -46,12 +46,6 @@ def serve_ui():
         return f.read()
 
 
-@app.get("/")
-def home():
-    """Health check endpoint."""
-    return {"status": "ok", "message": "Global Sports Intelligence Agent is live 🚀"}
-
-
 @app.post("/chat")
 async def chat(req: ChatRequest):
     user_message = req.message.strip()
