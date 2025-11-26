@@ -21,6 +21,8 @@
 
   ---
 
+  ## 🏗️ Cloud Architecture Diagram ![Architecture Diagram](https://github.com/praveenreddy82472/AI-Powered-Health-Risk-Prediction-Real-Time-Alerting-System-GCP-/blob/main/Images/final_archi.png)
+
   ## 🧱 Architecture Components
 
   ### 🔹 FastAPI Backend
