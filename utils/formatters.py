@@ -119,122 +119,98 @@ def format_series_hybrid(series: dict) -> str:
     return html
 
 
-def format_travel_info(travel_data: dict) -> str:
-    """
-    Hybrid HTML formatter for travel info.
-    Matches the polished style used in format_series_hybrid.
-    """
-
-    # ---------- ERROR BLOCK ----------
-    if "error" in travel_data:
+def format_travel_hybrid(travel: dict) -> str:
+    # ---------------- ERROR BLOCK ----------------
+    if "error" in travel:
         return f"""
-<div style="border-left:4px solid #e74c3c;padding:14px;background:#fff3f3;
-            border-radius:6px;margin-bottom:12px;">
-    <strong style="color:#c0392b;">❌ Error:</strong> {travel_data['error']}
-</div>
-"""
+        <p style="color:#c0392b;"><b>❌ Error:</b> {travel['error']}</p>
+        """
 
-    city = travel_data.get("city")
-    venue = travel_data.get("venue")
-    transport = travel_data.get("transport_options", [])
-    maps_link = travel_data.get("maps_link")
-
+    city = travel.get("city", "-")
+    venue = travel.get("venue")
     title = venue if venue else city
     is_venue = venue is not None
+    transport = travel.get("transport_options", [])
+    maps_link = travel.get("maps_link", "#")
 
-    # ----------------------------------------------------------------
-    # HEADER
-    # ----------------------------------------------------------------
-    html = f"""
-<h2 style="margin-bottom:6px;">🚗 Travel & Access Guide</h2>
-<p style="color:#555;margin-top:0;">
-    Location: <strong>{title}</strong><br>
-    City: <strong>{city}</strong>
-</p>
+    # ---------------- HEADER ----------------
+    html = f"<h2>🚗 Travel & Access Guide</h2>"
+    html += f"<p><b>Location:</b> {title}<br><b>City:</b> {city}</p><hr>"
 
-<hr style="margin:14px 0;">
-"""
-
-    # ----------------------------------------------------------------
-    # OVERVIEW CARD
-    # ----------------------------------------------------------------
+    # ---------------- OVERVIEW SECTION ----------------
     if is_venue:
         html += f"""
-<div style="border:1px solid #e1e1e1;border-radius:8px;padding:16px;background:#fafafa;margin-bottom:18px;">
-    <h3 style="margin-top:0;">🏟 Stadium Access Overview</h3>
-    <p style="margin-bottom:0;">
-        The venue <strong>{venue}</strong> in <strong>{city}</strong> is positioned near multiple transport hubs such as 
-        airports, metro and bus stations, and train lines. Below are the closest options to help you plan your arrival.
-    </p>
-</div>
-"""
+        <h3>🏟 Stadium Overview</h3>
+        <p>
+            <b>{venue}</b> in <b>{city}</b> has access to nearby airports, railway stations, 
+            metro lines and road transport. Below is a curated list of the closest transport hubs.
+        </p>
+        <br>
+        """
     else:
         html += f"""
-<div style="border:1px solid #e1e1e1;border-radius:8px;padding:16px;background:#fafafa;margin-bottom:18px;">
-    <h3 style="margin-top:0;">🏙 City Transport Overview</h3>
-    <p style="margin-bottom:0;">
-        <strong>{city}</strong> offers multiple modes of transportation including airports, major railway stations,
-        intercity buses, and local metro options. Below is a curated list of the nearest transport hubs.
-    </p>
-</div>
-"""
+        <h3>🏙 City Transport Overview</h3>
+        <p>
+            <b>{city}</b> has multiple connectivity options including airports, metros,
+            major railway junctions and intercity buses. Here are the closest transport hubs.
+        </p>
+        <br>
+        """
 
-    # ----------------------------------------------------------------
-    # TABLE HEADER
-    # ----------------------------------------------------------------
+    # ---------------- TABLE HEADER ----------------
     html += """
-<h3 style="margin-bottom:8px;">🚌 Nearby Transport Options</h3>
-
-<table style="width:100%;border-collapse:collapse;font-size:14px;margin-top:6px;">
-    <thead>
-        <tr style="background:#f5f5f5;">
-            <th style="padding:10px;border:1px solid #ddd;">Type</th>
-            <th style="padding:10px;border:1px solid #ddd;">Name</th>
-            <th style="padding:10px;border:1px solid #ddd;text-align:center;">Distance (km)</th>
-            <th style="padding:10px;border:1px solid #ddd;">Address</th>
+    <h3>🚌 Nearby Transport Options</h3>
+    <table border="1" cellspacing="0" cellpadding="6" 
+           style="border-collapse: collapse; width: 100%; font-size:14px;">
+        <tr style="background-color:#f2f2f2; font-weight:bold;">
+            <th>Type</th>
+            <th>Name</th>
+            <th>Distance (km)</th>
+            <th>Address</th>
         </tr>
-    </thead>
-    <tbody>
-"""
+    """
 
-    # ----------------------------------------------------------------
-    # TABLE ROWS
-    # ----------------------------------------------------------------
+    # ---------------- TABLE ROWS ----------------
     if isinstance(transport, list) and transport:
         for spot in transport:
             html += f"""
-        <tr>
-            <td style="padding:8px;border:1px solid #ddd;">{spot.get('type','-')}</td>
-            <td style="padding:8px;border:1px solid #ddd;">{spot.get('name','-')}</td>
-            <td style="padding:8px;border:1px solid #ddd;text-align:center;">{spot.get('distance_km','-')}</td>
-            <td style="padding:8px;border:1px solid #ddd;">{spot.get('address','-')}</td>
-        </tr>
-"""
+            <tr>
+                <td>{spot.get('type', '-')}</td>
+                <td>{spot.get('name', '-')}</td>
+                <td style="text-align:center;">{spot.get('distance_km', '-')}</td>
+                <td>{spot.get('address', '-')}</td>
+            </tr>
+            """
     else:
         html += """
         <tr>
-            <td colspan="4" style="padding:12px;border:1px solid #ddd;text-align:center;color:#777;">
+            <td colspan="4" style="text-align:center; color:#777;">
                 No transport hubs found nearby.
             </td>
         </tr>
-"""
+        """
 
-    html += """
-    </tbody>
-</table>
-"""
+    html += "</table><br>"
 
-    # ----------------------------------------------------------------
-    # MAP BUTTON
-    # ----------------------------------------------------------------
+    # ---------------- MAP BUTTON ----------------
     html += f"""
-<div style="margin-top:16px;">
     <a href="{maps_link}" target="_blank"
-       style="background:#0078ff;color:white;padding:10px 16px;border-radius:6px;
-              text-decoration:none;font-size:14px;">
+       style="background:#0078ff;color:white;padding:10px 16px;
+              border-radius:6px;text-decoration:none;font-size:14px;">
         🗺 Open in Maps
     </a>
-</div>
-"""
+    <br><br>
+    """
+
+    # ---------------- SUMMARY ----------------
+    html += f"""
+    <hr>
+    <p><b>🧠 Quick Summary:</b><br>
+       Total transport hubs: {len(transport)}<br>
+       Location type: {"Venue" if is_venue else "City"}<br>
+       Maps link provided: {"Yes" if maps_link else "No"}
+    </p>
+    """
 
     return html
+

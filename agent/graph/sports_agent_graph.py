@@ -11,7 +11,7 @@ from agent.llms.complete_llm import run_fusion_llm
 from agent.tools.intent_classifier import classify_intent_llm
 from agent.state.session_memory import memory
 from utils.city_cleaner import extract_city_from_text, correct_city_spelling
-from utils.formatters import format_series_hybrid,format_travel_info
+from utils.formatters import format_series_hybrid,format_travel_hybrid
 from agent.tools.sports_api import (
     get_current_match,
     get_series_schedule_by_team
@@ -161,7 +161,7 @@ def build_graph():
             return {"output": "I need a city name to lookup travel info."}
 
         result = run_travel_llm(session_id, city, venue)
-        formatted_html = format_travel_info(result)
+        formatted_html = format_travel_hybrid(result)
         return {"output": result.get("summary", str(formatted_html))}
 
     graph.add_node("TravelNode", travel_node)
