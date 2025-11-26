@@ -21,7 +21,7 @@
 
   ---
 
-  ## 🏗️ Cloud Architecture Diagram ![Architecture Diagram](https://github.com/praveenreddy82472/AI-Powered-Health-Risk-Prediction-Real-Time-Alerting-System-GCP-/blob/main/Images/final_archi.png)
+  ## 🏗️ Cloud Architecture Diagram ![Architecture Diagram](https://github.com/praveenreddy82472/sports-intelligence-agent/blob/main/images/LArchi.png)
 
   ## 🧱 Architecture Components
 
